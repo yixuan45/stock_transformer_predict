@@ -1,0 +1,57 @@
+2025-09-30 18:03:20,159 - root - INFO - ===== 价格预测模型开始运行 =====
+2025-09-30 18:03:20,159 - root - INFO - 开始数据处理...
+2025-09-30 18:03:20,159 - data_loader - INFO - 从./data/min_eth_data.csv加载数据
+2025-09-30 18:03:20,168 - data_loader - INFO - 数据加载完成,形状:(10000, 7)
+2025-09-30 18:03:20,169 - data_loader - INFO - 开始数据预处理...
+2025-09-30 18:03:20,169 - data_loader - INFO - 使用 minmax 方法标准化数据
+2025-09-30 18:03:20,178 - data_loader - INFO - 创建序列 - 输入长度: 30, 预测长度: 1
+2025-09-30 18:03:25,770 - data_loader - INFO - 序列创建完成 - 特征形状: (9970, 30, 6), 目标形状: (9970, 1)
+2025-09-30 18:03:26,083 - data_loader - INFO - 数据预处理完成
+2025-09-30 18:03:26,092 - data_loader - INFO - 数据加载器创建完成 - 训练集: 6979, 验证集: 997, 测试集: 1994
+2025-09-30 18:03:26,093 - root - INFO - 数据处理完成 - 训练集: 6979, 验证集: 997, 测试集: 1994
+2025-09-30 18:03:26,093 - root - INFO - 初始化模型...
+2025-09-30 18:03:26,098 - root - INFO - 模型类型: encoder 型Transformer
+2025-09-30 18:03:26,098 - root - INFO - 模型参数数量: 100,929
+2025-09-30 18:03:26,098 - root - INFO - 开始模型训练...
+2025-09-30 18:03:26,207 - trainer - INFO - 开始模型训练...
+2025-09-30 18:03:29,678 - trainer - INFO - Epoch 1/100 - Train Loss: 0.067258 - Val Loss: 0.187026 - LR: 0.00099975
+2025-09-30 18:03:29,690 - trainer - INFO - 模型已保存到 ./log/models/best_model.pt
+2025-09-30 18:03:29,690 - trainer - INFO - 保存最佳模型，验证损失: 0.187026
+2025-09-30 18:03:30,773 - trainer - INFO - Epoch 2/100 - Train Loss: 0.056157 - Val Loss: 0.152569 - LR: 0.00099901
+2025-09-30 18:03:30,785 - trainer - INFO - 模型已保存到 ./log/models/best_model.pt
+2025-09-30 18:03:30,785 - trainer - INFO - 保存最佳模型，验证损失: 0.152569
+2025-09-30 18:03:32,023 - trainer - INFO - Epoch 3/100 - Train Loss: 0.055257 - Val Loss: 0.129450 - LR: 0.00099778
+2025-09-30 18:03:32,037 - trainer - INFO - 模型已保存到 ./log/models/best_model.pt
+2025-09-30 18:03:32,037 - trainer - INFO - 保存最佳模型，验证损失: 0.129450
+2025-09-30 18:03:33,385 - trainer - INFO - Epoch 4/100 - Train Loss: 0.056117 - Val Loss: 0.108839 - LR: 0.00099606
+2025-09-30 18:03:33,405 - trainer - INFO - 模型已保存到 ./log/models/best_model.pt
+2025-09-30 18:03:33,405 - trainer - INFO - 保存最佳模型，验证损失: 0.108839
+2025-09-30 18:03:34,647 - trainer - INFO - Epoch 5/100 - Train Loss: 0.057489 - Val Loss: 0.192938 - LR: 0.00099384
+2025-09-30 18:03:34,648 - trainer - INFO - 早停计数器: 1/10
+2025-09-30 18:03:35,971 - trainer - INFO - Epoch 6/100 - Train Loss: 0.054671 - Val Loss: 0.190255 - LR: 0.00099114
+2025-09-30 18:03:35,972 - trainer - INFO - 早停计数器: 2/10
+2025-09-30 18:03:37,202 - trainer - INFO - Epoch 7/100 - Train Loss: 0.055377 - Val Loss: 0.169308 - LR: 0.00098796
+2025-09-30 18:03:37,202 - trainer - INFO - 早停计数器: 3/10
+2025-09-30 18:03:38,351 - trainer - INFO - Epoch 8/100 - Train Loss: 0.053990 - Val Loss: 0.226162 - LR: 0.00098429
+2025-09-30 18:03:38,351 - trainer - INFO - 早停计数器: 4/10
+2025-09-30 18:03:39,529 - trainer - INFO - Epoch 9/100 - Train Loss: 0.053828 - Val Loss: 0.198343 - LR: 0.00098015
+2025-09-30 18:03:39,529 - trainer - INFO - 早停计数器: 5/10
+2025-09-30 18:03:40,715 - trainer - INFO - Epoch 10/100 - Train Loss: 0.054568 - Val Loss: 0.181303 - LR: 0.00097553
+2025-09-30 18:03:40,715 - trainer - INFO - 早停计数器: 6/10
+2025-09-30 18:03:41,884 - trainer - INFO - Epoch 11/100 - Train Loss: 0.053798 - Val Loss: 0.159362 - LR: 0.00097044
+2025-09-30 18:03:41,885 - trainer - INFO - 早停计数器: 7/10
+2025-09-30 18:03:42,949 - trainer - INFO - Epoch 12/100 - Train Loss: 0.054315 - Val Loss: 0.183269 - LR: 0.00096489
+2025-09-30 18:03:42,949 - trainer - INFO - 早停计数器: 8/10
+2025-09-30 18:03:44,020 - trainer - INFO - Epoch 13/100 - Train Loss: 0.053921 - Val Loss: 0.166526 - LR: 0.00095888
+2025-09-30 18:03:44,021 - trainer - INFO - 早停计数器: 9/10
+2025-09-30 18:03:45,100 - trainer - INFO - Epoch 14/100 - Train Loss: 0.053836 - Val Loss: 0.171489 - LR: 0.00095241
+2025-09-30 18:03:45,101 - trainer - INFO - 早停计数器: 10/10
+2025-09-30 18:03:45,101 - trainer - INFO - 触发早停机制，停止训练
+2025-09-30 18:03:45,227 - trainer - INFO - 损失曲线已保存到 ./log/plots/loss_curve.png
+2025-09-30 18:03:45,228 - trainer - INFO - 训练完成 - 耗时: 0.32 分钟
+2025-09-30 18:03:45,228 - root - INFO - 开始模型评估...
+2025-09-30 18:03:45,228 - trainer - INFO - 开始模型评估...
+2025-09-30 18:03:45,252 - trainer - INFO - 已加载模型: ./log/models/best_model.pt
+2025-09-30 18:03:45,345 - trainer - INFO - 评估指标 - MAE: 135.4818, RMSE: 136.9053, R²: -47.3933
+2025-09-30 18:03:45,539 - trainer - INFO - 预测对比图已保存到 ./log/plots/prediction_comparison.png
+2025-09-30 18:03:45,539 - root - INFO - ===== 价格预测模型运行结束 =====
