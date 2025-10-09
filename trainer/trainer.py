@@ -95,12 +95,11 @@ class Trainer:
 
             # 前向传播
             if config['model_type'] == 'decoder':
-                # 对于带解码器的模型，使用教师强制
                 # 取目标的前n-1步作为解码器输入
                 decoder_input = torch.cat([torch.zeros_like(targets[:, :1, :]), targets[:, :-1, :]], dim=1)
-                outputs = self.model(inputs, decoder_input)
+                outputs = self.model(inputs, decoder_input).squeeze(-1)
             else:
-                outputs = self.model(inputs)
+                outputs = self.model(inputs).squeeze(-1)
 
             # 计算损失
             loss = self.criterion(outputs, targets)
@@ -136,9 +135,9 @@ class Trainer:
                 # 前向传播
                 if config['model_type'] == 'decoder':
                     decoder_input = torch.cat([torch.zeros_like(targets[:, :1, :]), targets[:, :-1, :]], dim=1)
-                    outputs = self.model(inputs, decoder_input)
+                    outputs = self.model(inputs, decoder_input).squeeze(-1)
                 else:
-                    outputs = self.model(inputs)
+                    outputs = self.model(inputs).squeeze(-1)
 
                 # 计算损失
                 loss = self.criterion(outputs, targets)

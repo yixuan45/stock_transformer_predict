@@ -33,13 +33,18 @@ class PositionalEncoding(nn.Module):
 
 
 class TransformerEncoderModel(nn.Module):
-    """进使用Transformer编码器的价格预测模型"""
+    """仅使用Transformer编码器的价格预测模型"""
 
     def __init__(self):
         super(TransformerEncoderModel, self).__init__()
         self.config = config
 
         # 输入特征维度映射到模型维度
+        # (批量大小, 序列长度, 特征维度)
+        # → 嵌入层 → (批量大小, 序列长度, d_model)
+        # → 加位置编码 → (批量大小, 序列长度, d_model)
+        # → 编码器层（N次） → (批量大小, 序列长度, d_model)
+        # → 输出层 → (批量大小, 预测长度, 目标维度)
         self.input_projection = nn.Linear(config['input_dim'], config['d_model'])
 
         # 位置编码
@@ -214,7 +219,7 @@ class TransformerWithDecoderModel(nn.Module):
 
 def get_transformer_model():
     """根据配置获取相应的Transformer模型"""
-    if config['model_type'] == 'encoder':
+    if config['model_type'] == 'encoder': # 这里仅仅使用包含编码器的encoder
         return TransformerEncoderModel()
     elif config['model_type'] == 'decoder':
         return TransformerWithDecoderModel()

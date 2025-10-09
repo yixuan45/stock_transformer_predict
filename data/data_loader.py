@@ -63,7 +63,7 @@ class DataProcessor:
         """加载原始数据"""
         try:
             logger.info(f"从{self.config['data_path']}加载数据")
-            self.data = pd.read_csv(self.config['data_path'])
+            self.data = pd.read_csv(self.config['data_path'], index_col='t')
             logger.info(f"数据加载完成,形状:{self.data.shape}")
 
         except Exception as e:
@@ -125,8 +125,8 @@ class DataProcessor:
             target = self.data[target_column].iloc[i + seq_len:i + seq_len + pred_len].values
             y.append(target)
 
-        self.X = np.array(X)
-        self.y = np.array(y)
+        self.X = np.array(X) # X:(list_num,seq_len,feature dimension)
+        self.y = np.array(y) # Y:(list_num,predict_len,)
 
         logger.info(f"序列创建完成 - 特征形状: {self.X.shape}, 目标形状: {self.y.shape}")
 
