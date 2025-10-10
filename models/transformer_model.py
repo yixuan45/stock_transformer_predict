@@ -10,7 +10,7 @@ from config import config
 class PositionalEncoding(nn.Module):
     """位置编码模块，为输入序列添加位置信息"""
 
-    def __init__(self, d_model, max_len=5000, dropout=0.1):
+    def __init__(self, d_model, max_len, dropout=0.1):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
 
@@ -25,10 +25,16 @@ class PositionalEncoding(nn.Module):
 
     def forward(self, x):
         """
-        :param x:输入张量，形状为(seq_len, batch_size,d_model)
+        :param x:输入张量，根据batch_first不同有两种形状:
+                 - batch_first=True时: (batch_size, seq_len, d_model)
+                 - batch_first=False时: (seq_len, batch_size, d_model)
         :return:
         """
-        x = x + self.pe[:x.size(0)]
+        # 根据输入形状自动适配位置编码添加方式
+        if x.dim() == 3 and x.size(1) < x.size(0):  # 判断是否为(batch, seq, dim)格式
+            x = x + self.pe[:x.size(1)].permute(1, 0, 2)  # 适配batch_first=True
+        else:
+            x = x + self.pe[:x.size(0)]  # 适配默认格式
         return self.dropout(x)
 
 class TransformerEncoderModel(nn.Module):
@@ -39,23 +45,19 @@ class TransformerEncoderModel(nn.Module):
         self.config = config
 
         # 输入特征维度映射到模型维度
-        # (批量大小, 序列长度, 特征维度)
-        # → 嵌入层 → (批量大小, 序列长度, d_model)
-        # → 加位置编码 → (批量大小, 序列长度, d_model)
-        # → 编码器层（N次） → (批量大小, 序列长度, d_model)
-        # → 输出层 → (批量大小, 预测长度, 目标维度)
         self.input_projection = nn.Linear(config['input_dim'], config['d_model'])
 
         # 位置编码
         self.pos_encoder = PositionalEncoding(config['d_model'], config['max_len'])
 
-        # Transformer编码层
+        # Transformer编码层 - 关键修改：添加batch_first=True
         encoder_layers = nn.TransformerEncoderLayer(
             d_model=config['d_model'],
             nhead=config['n_head'],
             dim_feedforward=config['dim_feedforward'],
             dropout=config['dropout'],
-            activation=config['activation']
+            activation=config['activation'],
+            batch_first=True  # 这里添加batch_first=True
         )
 
         # Transformer编码器
@@ -74,12 +76,16 @@ class TransformerEncoderModel(nn.Module):
         self._init_weights()
 
     def _init_weights(self):
-        """初始化模型权重"""
-        initrange = 0.1
-        self.input_projection.bias.data.zero_()
-        self.input_projection.weight.data.uniform_(-initrange, initrange)
-        self.output_layer.bias.data.zero_()
-        self.output_layer.weight.data.uniform_(-initrange, initrange)
+        # 对所有子模块递归初始化
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                # 线性层用Xavier初始化
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    module.bias.data.zero_()
+            elif isinstance(module, nn.Embedding):
+                # 嵌入层用小范围均匀分布
+                module.weight.data.uniform_(-0.02, 0.02)
 
     def forward(self, src):
         """
@@ -89,26 +95,20 @@ class TransformerEncoderModel(nn.Module):
         返回:
             output: 预测结果，形状为 (batch_size, prediction_length, output_dim)
         """
+        # 当batch_first=True时，无需转置维度，保持(batch_size, seq_len, input_dim)
+        src = self.input_projection(src)  # (batch_size, seq_len, d_model)
 
-        # 调整维度以适应Transformer的输入要求 (seq_len, batch_size, d_model)
-        src = src.permute(1, 0, 2)  # (seq_len, batch_size, input_dim)
-
-        # 投影到模型维度
-        src = self.input_projection(src)  # (seq_len, batch_size, d_model)
-
-        # 添加位置编码
-        src = self.pos_encoder(src)  # (seq_len, batch_size, d_model)
+        # 添加位置编码（已适配batch_first）
+        src = self.pos_encoder(src)  # (batch_size, seq_len, d_model)
 
         # Transformer编码
-        output = self.transformer_encoder(src)  # (seq_len, batch_size, d_model)
+        output = self.transformer_encoder(src)  # (batch_size, seq_len, d_model)
 
-        # 使用最后一个时间步的输出进行预测
-        last_output = output[-1, :, :]  # (batch_size, d_model)
+        # 关键修改：全局平均池化，融合整个序列的特征（替代仅取最后一步）
+        pooled_output = output.mean(dim=1)  # (batch_size, d_model) → 每个样本的序列全局特征
+        prediction = self.output_layer(pooled_output)  # (batch_size, 1*output_dim)
 
-        # 输出层
-        prediction = self.output_layer(last_output)  # (batch_size, prediction_length * output_dim)
-
-        # 调整形状为 (batch_size, prediction_length, output_dim)
+        # 调整形状
         prediction = prediction.view(
             -1,
             self.config['prediction_length'],
@@ -120,7 +120,7 @@ class TransformerEncoderModel(nn.Module):
 
 class TransformerWithDecoderModel(nn.Module):
     """包含编码器和解码器的Transformer价格预测模型"""
-
+    # 此类已正确设置batch_first=True，无需修改
     def __init__(self):
         super().__init__()
         self.config = config
@@ -141,7 +141,8 @@ class TransformerWithDecoderModel(nn.Module):
             nhead=config['nhead'],
             dim_feedforward=config['dim_feedforward'],
             dropout=config['dropout'],
-            activation=config['activation']
+            activation=config['activation'],
+            batch_first=True
         )
 
         # Transformer编码器
@@ -156,7 +157,8 @@ class TransformerWithDecoderModel(nn.Module):
             nhead=config['nhead'],
             dim_feedforward=config['dim_feedforward'],
             dropout=config['dropout'],
-            activation=config['activation']
+            activation=config['activation'],
+            batch_first=True
         )
 
         # Transformer解码器
@@ -190,35 +192,28 @@ class TransformerWithDecoderModel(nn.Module):
         返回:
             output: 预测结果，形状为 (batch_size, prediction_length, output_dim)
         """
-        # 调整维度 (seq_len, batch_size, dim)
-        src = src.permute(1, 0, 2)  # (seq_len, batch_size, input_dim)
-        tgt = tgt.permute(1, 0, 2)  # (pred_len, batch_size, output_dim)
-
-        # 投影到模型维度
-        src = self.input_projection(src)  # (seq_len, batch_size, d_model)
-        tgt = self.target_projection(tgt)  # (pred_len, batch_size, d_model)
+        # 投影到模型维度（保持batch_first=True的维度顺序）
+        src = self.input_projection(src)  # (batch_size, seq_len, d_model)
+        tgt = self.target_projection(tgt)  # (batch_size, pred_len, d_model)
 
         # 添加位置编码
         src = self.pos_encoder(src)
         tgt = self.pos_encoder(tgt)
 
         # 编码器输出
-        memory = self.transformer_encoder(src)  # (seq_len, batch_size, d_model)
+        memory = self.transformer_encoder(src)  # (batch_size, seq_len, d_model)
 
         # 解码器输出
-        output = self.transformer_decoder(tgt, memory)  # (pred_len, batch_size, d_model)
+        output = self.transformer_decoder(tgt, memory)  # (batch_size, pred_len, d_model)
 
         # 输出层
-        output = self.output_layer(output)  # (pred_len, batch_size, output_dim)
-
-        # 调整回原始维度 (batch_size, pred_len, output_dim)
-        output = output.permute(1, 0, 2)
+        output = self.output_layer(output)  # (batch_size, pred_len, output_dim)
 
         return output
 
 def get_transformer_model():
     """根据配置获取相应的Transformer模型"""
-    if config['model_type'] == 'encoder': # 这里仅仅使用包含编码器的encoder
+    if config['model_type'] == 'encoder':
         return TransformerEncoderModel()
     elif config['model_type'] == 'decoder':
         return TransformerWithDecoderModel()

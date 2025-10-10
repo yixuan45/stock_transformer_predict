@@ -12,7 +12,6 @@ from config import config
 from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
-
 logger = logging.getLogger("trainer")
 
 
@@ -35,11 +34,6 @@ class Trainer:
         self.val_losses = []
         self.best_val_loss = float('inf')
         self.early_stopping_counter = 0
-
-        # Scheduled sampling参数
-        self.scheduled_sampling_prob = 0.0  # 初始概率
-        self.scheduled_sampling_increase = 0.001  # 每次增加的概率
-        self.scheduled_sampling_max = 0.5  # 最大概率
 
         # 创建保存目录
         os.makedirs(config['save_dir'], exist_ok=True)
@@ -79,6 +73,8 @@ class Trainer:
 
         if loss_name == 'mse':
             return nn.MSELoss()
+        elif loss_name == 'huber':
+            return nn.HuberLoss(delta=1.5)
         elif loss_name == 'mae':
             return nn.L1Loss()
         elif loss_name == 'huber':
@@ -91,7 +87,7 @@ class Trainer:
         self.model.train()
         total_loss = 0.0
 
-        for batch_idx, (inputs, targets) in enumerate(self.train_loader):
+        for batch_idx, (inputs, targets) in tqdm(enumerate(self.train_loader), total=len(self.train_loader)):
             # 移动数据到设备
             inputs = inputs.to(config['device'])
             targets = targets.to(config['device'])
@@ -131,8 +127,8 @@ class Trainer:
         """验证模型"""
         self.model.eval()
         total_loss = 0.0
-        all_outputs=[]
-        all_targets=[]
+        all_outputs = []
+        all_targets = []
 
         with torch.no_grad():
             for inputs, targets in self.val_loader:
@@ -166,7 +162,8 @@ class Trainer:
         logger.info("开始模型训练...")
         start_time = time.time()
 
-        for epoch in tqdm(range(config['epochs'])):
+        for epoch in range(config['epochs']):
+            logger.info(f"Epoch {epoch + 1}/{config['epochs']}")
             # 训练一个epoch
             train_loss = self.train_one_epoch(epoch)
 

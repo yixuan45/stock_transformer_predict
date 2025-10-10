@@ -2,7 +2,7 @@
 import logging
 import os
 from data.data_loader import DataProcessor
-from models.transformer import get_transformer_model
+from models.transformer_model import get_transformer_model
 from trainer.trainer import Trainer
 from log.logs.logger import *
 from config import config
@@ -38,7 +38,7 @@ def main():
         logger.info("===== 价格预测模型运行结束 =====")
 
         # 4. 评估模型
-        # logger.info("开始模型评估...")
+        logger.info("开始模型评估...")
         evaluation_results = trainer.evaluate()
 
     except Exception as e:

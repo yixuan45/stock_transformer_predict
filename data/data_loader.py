@@ -63,7 +63,9 @@ class DataProcessor:
         """加载原始数据"""
         try:
             logger.info(f"从{self.config['data_path']}加载数据")
-            self.data = pd.read_csv(self.config['data_path'], index_col='t')
+            data = pd.read_csv(self.config['data_path'], index_col='t')
+            data['c_pred'] = data['c'].shift(-1)
+            self.data = data.dropna()
             logger.info(f"数据加载完成,形状:{self.data.shape}")
 
         except Exception as e:
@@ -78,8 +80,8 @@ class DataProcessor:
         logger.info("开始数据预处理...")
 
         # 选择特征列（排除目标列）
-        target_column = 'c'  # 目标价格列
-        feature_columns = [col for col in self.data.columns if col != target_column]  # 假设最后一列是目标价格
+        target_column = 'c_pred'  # 目标价格列
+        feature_columns = [col for col in self.data.columns if col != target_column]  # 特征列
 
         # 数据标准化
         self._normalize_data(feature_columns, target_column)
@@ -92,6 +94,21 @@ class DataProcessor:
         """标准化特征和目标变量"""
         logger.info(f"使用 {self.config['normalization']} 方法标准化数据")
 
+        # 2. 先划分时序训练/验证/测试集的索引（按时间顺序，不打乱）
+        total_len = len(self.data)
+        test_len = int(total_len * self.config['test_size'])
+        val_len = int(total_len * self.config['val_size'])
+        train_len = total_len - val_len - test_len
+
+        # 时序索引：train→val→test（早期→中期→晚期）
+        train_idx = range(train_len)
+        val_idx = range(train_len, train_len + val_len)
+        test_idx = range(train_len + val_len, total_len)
+
+        # target_index
+        feature_index = [self.data.columns.get_loc(name) for name in feature_columns]
+        target_index = self.data.columns.get_loc(target_column)
+
         # 标准化特征
         if self.config['normalization'] == 'minmax':
             self.scaler = MinMaxScaler(feature_range=(0, 1))
@@ -99,14 +116,36 @@ class DataProcessor:
             self.scaler = StandardScaler()
 
         if self.config['normalization'] != 'none' and self.scaler:
-            self.data[feature_columns] = self.scaler.fit_transform(self.data[feature_columns])
+            # 仅用训练集的特征拟合标准化器
+            self.scaler.fit(self.data.iloc[train_idx, feature_index])
+
+            # 分别转换训练集、验证集、测试集的特征（避免信息泄露）
+            self.data.iloc[train_idx, feature_index] = self.scaler.transform(
+                self.data.iloc[train_idx, feature_index])
+            self.data.iloc[val_idx, feature_index] = self.scaler.transform(
+                self.data.iloc[val_idx, feature_index])
+            self.data.iloc[test_idx, feature_index] = self.scaler.transform(
+                self.data.iloc[test_idx, feature_index])
 
         # 单独标准化目标变量
         self.scaler_target = MinMaxScaler(feature_range=(0, 1)) if self.config['normalization'] != 'none' else None
         if self.scaler_target:
-            self.data[target_column] = self.scaler_target.fit_transform(
-                self.data[target_column].values.reshape(-1, 1)
+            # 仅用训练集的目标拟合
+            self.scaler_target.fit(self.data.iloc[train_idx, target_index].values.reshape(-1, 1))
+            # 转换所有集的目标
+            self.data.iloc[train_idx, target_index] = self.scaler_target.transform(
+                self.data.iloc[train_idx, target_index].values.reshape(-1, 1)
             ).flatten()
+            self.data.iloc[val_idx, target_index] = self.scaler_target.transform(
+                self.data.iloc[val_idx, target_index].values.reshape(-1, 1)
+            ).flatten()
+            self.data.iloc[test_idx, target_index] = self.scaler_target.transform(
+                self.data.iloc[test_idx, target_index].values.reshape(-1, 1)
+            ).flatten()
+
+        logger.info(f"训练集特征均值:{self.data.iloc[train_idx, feature_index].mean().values}")
+        logger.info(f"验证集特征均值:{self.data.iloc[val_idx, feature_index].mean().values}")
+        logger.info(f"测试集特征均值:{self.data.iloc[test_idx, feature_index].mean().values}")
 
     def _create_sequences(self, feature_columns, target_column):
         """创建输入序列和目标序列"""
@@ -125,8 +164,8 @@ class DataProcessor:
             target = self.data[target_column].iloc[i + seq_len:i + seq_len + pred_len].values
             y.append(target)
 
-        self.X = np.array(X) # X:(list_num,seq_len,feature dimension)
-        self.y = np.array(y) # Y:(list_num,predict_len,)
+        self.X = np.array(X)  # X:(list_num,seq_len,feature dimension)
+        self.y = np.array(y)  # Y:(list_num,predict_len,)
 
         logger.info(f"序列创建完成 - 特征形状: {self.X.shape}, 目标形状: {self.y.shape}")
 
