@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
 import os
-import logging
+import time
 import torch
+import logging
+import numpy as np
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
-import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-import time
 from tqdm import tqdm
 from config import config
+from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
 
 logger = logging.getLogger("trainer")
 
@@ -34,6 +35,11 @@ class Trainer:
         self.val_losses = []
         self.best_val_loss = float('inf')
         self.early_stopping_counter = 0
+
+        # Scheduled sampling参数
+        self.scheduled_sampling_prob = 0.0  # 初始概率
+        self.scheduled_sampling_increase = 0.001  # 每次增加的概率
+        self.scheduled_sampling_max = 0.5  # 最大概率
 
         # 创建保存目录
         os.makedirs(config['save_dir'], exist_ok=True)
@@ -125,6 +131,8 @@ class Trainer:
         """验证模型"""
         self.model.eval()
         total_loss = 0.0
+        all_outputs=[]
+        all_targets=[]
 
         with torch.no_grad():
             for inputs, targets in self.val_loader:
@@ -142,6 +150,10 @@ class Trainer:
                 # 计算损失
                 loss = self.criterion(outputs, targets)
                 total_loss += loss.item()
+
+                # 保存结果用于后续分析
+                all_outputs.append(outputs.cpu().numpy())
+                all_targets.append(targets.cpu().numpy())
 
         # 计算平均损失
         avg_loss = total_loss / len(self.val_loader)
@@ -178,6 +190,9 @@ class Trainer:
                 self.best_val_loss = val_loss
                 self.save_model(f"best_model.pt")
                 self.early_stopping_counter = 0
+                # 重置学习率调度器
+                if self.scheduler is not None and config.get('reset_scheduler_on_best', False):
+                    self.scheduler = self._get_lr_scheduler()
                 logger.info(f"保存最佳模型，验证损失: {val_loss:.6f}")
             else:
                 self.early_stopping_counter += 1
@@ -255,23 +270,54 @@ class Trainer:
         all_outputs_original = self.data_processor.inverse_transform_target(all_outputs.reshape(-1))
         all_targets_original = self.data_processor.inverse_transform_target(all_targets.reshape(-1))
 
-        # 计算评估指标
-        mae = mean_absolute_error(all_targets_original, all_outputs_original)
-        rmse = np.sqrt(mean_squared_error(all_targets_original, all_outputs_original))
-        r2 = r2_score(all_targets_original, all_outputs_original)
+        # 计算整体评估指标
+        metrics = self._calculate_metrics(all_targets_original, all_outputs_original)
 
-        logger.info(f"评估指标 - MAE: {mae:.4f}, RMSE: {rmse:.4f}, R²: {r2:.4f}")
+        # # 按预测步长计算指标
+        # step_metrics = self._calculate_step_metrics(all_targets, all_outputs)
+        # metrics['step_metrics'] = step_metrics
 
         # 绘制预测结果
         self.plot_predictions(all_outputs_original, all_targets_original)
 
         return {
-            'mae': mae,
-            'rmse': rmse,
-            'r2': r2,
+            'mae': metrics['mae'],
+            'rmse': metrics['rmse'],
+            'r2': metrics['r2'],
             'predictions': all_outputs_original,
             'targets': all_targets_original
         }
+
+    def _calculate_metrics(self, targets, predictions):
+        """计算评估指标"""
+        mae = mean_absolute_error(targets, predictions)
+        rmse = np.sqrt(mean_squared_error(targets, predictions))
+        r2 = r2_score(targets, predictions)
+
+        logger.info(f"整体评估指标 - MAE: {mae:.4f}, RMSE: {rmse:.4f}, R²: {r2:.4f}")
+        return {'mae': mae, 'rmse': rmse, 'r2': r2}
+
+    def _calculate_step_metrics(self, targets, predictions):
+        """按预测步长计算评估指标"""
+        pred_len = config['prediction_length']
+        step_metrics = []
+
+        # 转换回原始尺度
+        targets_original = self.data_processor.inverse_transform_target(targets.reshape(-1, pred_len))
+        predictions_original = self.data_processor.inverse_transform_target(predictions.reshape(-1, pred_len))
+
+        for step in range(pred_len):
+            step_targets = np.array(targets_original[step])
+            step_preds = np.array(predictions_original[step])
+
+            mae = mean_absolute_error(step_targets, step_preds)
+            rmse = np.sqrt(mean_squared_error(step_targets, step_preds))
+            r2 = r2_score(step_targets, step_preds)
+
+            step_metrics.append({'step': step + 1, 'mae': mae, 'rmse': rmse, 'r2': r2})
+            logger.info(f"步长 {step + 1} 指标 - MAE: {mae:.4f}, RMSE: {rmse:.4f}, R²: {r2:.4f}")
+
+        return step_metrics
 
     def save_model(self, filename):
         """保存模型"""
@@ -298,50 +344,56 @@ class Trainer:
 
     def plot_loss_curve(self):
         """绘制训练和验证损失曲线"""
-        plt.figure(figsize=(10, 6))
-        plt.plot(range(1, len(self.train_losses) + 1), self.train_losses, label='Train Loss')
-        plt.plot(range(1, len(self.val_losses) + 1), self.val_losses, label='Validation Loss')
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
-        plt.title('Training and Validation Loss Curve')
-        plt.legend()
-        plt.grid(True)
+        try:
+            plt.figure(figsize=(10, 6))
+            plt.plot(range(1, len(self.train_losses) + 1), self.train_losses, label='Train Loss')
+            plt.plot(range(1, len(self.val_losses) + 1), self.val_losses, label='Validation Loss')
+            plt.xlabel('Epoch')
+            plt.ylabel('Loss')
+            plt.title('Training and Validation Loss Curve')
+            plt.legend()
+            plt.grid(True)
 
-        # 保存图像
-        plot_path = os.path.join(config['plot_dir'], 'loss_curve.png')
-        plt.savefig(plot_path)
-        logger.info(f"损失曲线已保存到 {plot_path}")
-        plt.close()
+            # 保存图像
+            plot_path = os.path.join(config['plot_dir'], 'loss_curve.png')
+            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+            logger.info(f"损失曲线已保存到 {plot_path}")
+            plt.close()
+        except Exception as e:
+            logger.error(f"绘制损失曲线失败: {e}")
 
     def plot_predictions(self, predictions, targets):
         """绘制预测结果与真实值对比图"""
-        plt.figure(figsize=(15, 8))
+        try:
+            plt.figure(figsize=(15, 8))
 
-        # 绘制全部预测结果
-        plt.subplot(2, 1, 1)
-        plt.plot(targets, label='True Price', alpha=0.7)
-        plt.plot(predictions, label='Predicted Price', alpha=0.7)
-        plt.xlabel('Time Step')
-        plt.ylabel('Price')
-        plt.title('Price Prediction vs True Price')
-        plt.legend()
-        plt.grid(True)
+            # 绘制全部预测结果
+            plt.subplot(2, 1, 1)
+            plt.plot(targets, label='True Price', alpha=0.7)
+            plt.plot(predictions, label='Predicted Price', alpha=0.7)
+            plt.xlabel('Time Step')
+            plt.ylabel('Price')
+            plt.title('Price Prediction vs True Price')
+            plt.legend()
+            plt.grid(True)
 
-        # 绘制部分预测结果（最后100个时间步）
-        plt.subplot(2, 1, 2)
-        start_idx = max(0, len(targets) - 100)
-        plt.plot(range(start_idx, len(targets)), targets[start_idx:], label='True Price', alpha=0.7)
-        plt.plot(range(start_idx, len(predictions)), predictions[start_idx:], label='Predicted Price', alpha=0.7)
-        plt.xlabel('Time Step')
-        plt.ylabel('Price')
-        plt.title('Price Prediction vs True Price (Last 100 Steps)')
-        plt.legend()
-        plt.grid(True)
+            # 绘制部分预测结果（最后100个时间步）
+            plt.subplot(2, 1, 2)
+            start_idx = max(0, len(targets) - 100)
+            plt.plot(range(start_idx, len(targets)), targets[start_idx:], label='True Price', alpha=0.7)
+            plt.plot(range(start_idx, len(predictions)), predictions[start_idx:], label='Predicted Price', alpha=0.7)
+            plt.xlabel('Time Step')
+            plt.ylabel('Price')
+            plt.title('Price Prediction vs True Price (Last 100 Steps)')
+            plt.legend()
+            plt.grid(True)
 
-        plt.tight_layout()
+            plt.tight_layout()
 
-        # 保存图像
-        plot_path = os.path.join(config['plot_dir'], 'prediction_comparison.png')
-        plt.savefig(plot_path)
-        logger.info(f"预测对比图已保存到 {plot_path}")
-        plt.close()
+            # 保存图像
+            plot_path = os.path.join(config['plot_dir'], 'prediction_comparison.png')
+            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+            logger.info(f"预测对比图已保存到 {plot_path}")
+            plt.close()
+        except Exception as e:
+            logger.error(f"绘制预测对比图失败: {e}")

@@ -31,7 +31,6 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:x.size(0)]
         return self.dropout(x)
 
-
 class TransformerEncoderModel(nn.Module):
     """仅使用Transformer编码器的价格预测模型"""
 

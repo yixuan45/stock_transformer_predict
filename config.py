@@ -56,8 +56,8 @@ def get_config():
     train_group.add_argument('--lr_scheduler', type=str, default='cosine',
                              choices=['cosine', 'step', 'none'],
                              help='lr_scheduler style')
-    train_group.add_argument('--is_early_stopping', type=bool, default=False, help='whether to early stopping')
-    train_group.add_argument('--early_stopping_patience', type=int, default=10,
+    train_group.add_argument('--is_early_stopping', type=bool, default=True, help='whether to early stopping')
+    train_group.add_argument('--early_stopping_patience', type=int, default=3,
                              help='early_stopping_patience')
     train_group.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu',
                              choices=['cpu', 'cuda'],

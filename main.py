@@ -35,11 +35,11 @@ def main():
         trainer = Trainer(model, train_loader, val_loader, test_loader, data_processor)
         trainer.train()
 
-        # 4. 评估模型
-        logger.info("开始模型评估...")
-        evaluation_results = trainer.evaluate()
-
         logger.info("===== 价格预测模型运行结束 =====")
+
+        # 4. 评估模型
+        # logger.info("开始模型评估...")
+        evaluation_results = trainer.evaluate()
 
     except Exception as e:
         logger.error(f"程序运行出错: {str(e)}", exc_info=True)
