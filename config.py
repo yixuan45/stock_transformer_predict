@@ -14,15 +14,15 @@ def get_config():
 
     # 数据相关配置
     data_group = parser.add_argument_group('data_config')
-    data_group.add_argument('--data_path', type=str, default='./data/min_eth_data.csv', help='the path of data')
+    data_group.add_argument('--data_path', type=str, default='./data/eth_data.csv', help='the path of data')
     data_group.add_argument('--sequence_length', type=int, default=100, help='the length of input sequence')
     data_group.add_argument('--prediction_length', type=int, default=1, help='the length of prediction sequence')
     data_group.add_argument('--test_size', type=float, default=0.2, help='the size of test data')
     data_group.add_argument('--val_size', type=float, default=0.1, help='the size of validation data')
     data_group.add_argument('--batch_size', type=int, default=128, help='the batch size')
     data_group.add_argument('--shuffle', action='store_true', default=True, help='whether to shuffle data')
-    data_group.add_argument('--normalization', type=str, default='minmax', choices=['minmax', 'standard', 'none'],
-                            help='the normalization method')
+    data_group.add_argument('--normalization', type=str, default='minmax', choices=['minmax', 'standard','robust', 'none'],
+                            help='the normalization method') # robust更加的稳定。
 
     # 模型相关配置
     model_group = parser.add_argument_group('model_config')

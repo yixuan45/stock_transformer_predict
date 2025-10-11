@@ -270,9 +270,9 @@ class Trainer:
         # 计算整体评估指标
         metrics = self._calculate_metrics(all_targets_original, all_outputs_original)
 
-        # # 按预测步长计算指标
-        # step_metrics = self._calculate_step_metrics(all_targets, all_outputs)
-        # metrics['step_metrics'] = step_metrics
+        # 按预测步长计算指标
+        step_metrics = self._calculate_step_metrics(all_targets, all_outputs)
+        metrics['step_metrics'] = step_metrics
 
         # 绘制预测结果
         self.plot_predictions(all_outputs_original, all_targets_original)
@@ -298,19 +298,23 @@ class Trainer:
         """按预测步长计算评估指标"""
         pred_len = config['prediction_length']
         step_metrics = []
-
-        # 转换回原始尺度
-        targets_original = self.data_processor.inverse_transform_target(targets.reshape(-1, pred_len))
-        predictions_original = self.data_processor.inverse_transform_target(predictions.reshape(-1, pred_len))
-
+        # 正确逻辑：先展平为1维，反标准化后再按步长拆分
+        # 1. 展平目标值和预测值（样本数×pred_len → 总长度=样本数×pred_len 的1D数组）
+        targets_flat = targets.reshape(-1)  # 形状：(total_samples,)
+        predictions_flat = predictions.reshape(-1)  # 形状：(total_samples,)
+        # 2. 反标准化（符合 inverse_transform_target 的输入要求）
+        targets_original = self.data_processor.inverse_transform_target(targets_flat)
+        predictions_original = self.data_processor.inverse_transform_target(predictions_flat)
+        # 3. 按预测步长拆分（恢复为“样本数×pred_len”的2D数组）
+        targets_original = targets_original.reshape(-1, pred_len)  # 形状：(num_samples, pred_len)
+        predictions_original = predictions_original.reshape(-1, pred_len)  # 形状：(num_samples, pred_len)
+        # 4. 逐步计算指标
         for step in range(pred_len):
-            step_targets = np.array(targets_original[step])
-            step_preds = np.array(predictions_original[step])
-
+            step_targets = targets_original[:, step]  # 第step步的所有真实值
+            step_preds = predictions_original[:, step]  # 第step步的所有预测值
             mae = mean_absolute_error(step_targets, step_preds)
             rmse = np.sqrt(mean_squared_error(step_targets, step_preds))
             r2 = r2_score(step_targets, step_preds)
-
             step_metrics.append({'step': step + 1, 'mae': mae, 'rmse': rmse, 'r2': r2})
             logger.info(f"步长 {step + 1} 指标 - MAE: {mae:.4f}, RMSE: {rmse:.4f}, R²: {r2:.4f}")
 

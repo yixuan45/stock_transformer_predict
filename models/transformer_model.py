@@ -30,11 +30,11 @@ class PositionalEncoding(nn.Module):
                  - batch_first=False时: (seq_len, batch_size, d_model)
         :return:
         """
-        # 根据输入形状自动适配位置编码添加方式
-        if x.dim() == 3 and x.size(1) < x.size(0):  # 判断是否为(batch, seq, dim)格式
-            x = x + self.pe[:x.size(1)].permute(1, 0, 2)  # 适配batch_first=True
+        seq_len = x.size(1) if x.size(0) > x.size(1) else x.size(0)
+        if x.dim() == 3 and x.size(0) < x.size(1):  # 判断是否为(batch, seq, dim)格式
+            x = x + self.pe[:seq_len]  # 适配batch_first=True
         else:
-            x = x + self.pe[:x.size(0)]  # 适配默认格式
+            x = x + self.pe[:seq_len].permute(1, 0, 2)  # 适配默认格式
         return self.dropout(x)
 
 class TransformerEncoderModel(nn.Module):
@@ -104,9 +104,8 @@ class TransformerEncoderModel(nn.Module):
         # Transformer编码
         output = self.transformer_encoder(src)  # (batch_size, seq_len, d_model)
 
-        # 关键修改：全局平均池化，融合整个序列的特征（替代仅取最后一步）
-        pooled_output = output.mean(dim=1)  # (batch_size, d_model) → 每个样本的序列全局特征
-        prediction = self.output_layer(pooled_output)  # (batch_size, 1*output_dim)
+        last_step_output = output[:, -1, :]
+        prediction = self.output_layer(last_step_output)
 
         # 调整形状
         prediction = prediction.view(

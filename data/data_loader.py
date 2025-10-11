@@ -11,7 +11,7 @@ import pandas as pd
 from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler
 
 # own
 from config import config
@@ -67,7 +67,6 @@ class DataProcessor:
             data['c_pred'] = data['c'].shift(-1)
             self.data = data.dropna()
             logger.info(f"数据加载完成,形状:{self.data.shape}")
-
         except Exception as e:
             logger.error(f"数据加载失败:{str(e)}", exc_info=True)
             raise e
@@ -92,7 +91,20 @@ class DataProcessor:
 
     def _normalize_data(self, feature_columns, target_column):
         """标准化特征和目标变量"""
-        logger.info(f"使用 {self.config['normalization']} 方法标准化数据")
+        logger.info(f'初始化自适应特征标准化器，为不同特征设置不同标准化策略')
+
+        # 存储每个特征的标准化器
+        scalers = {
+            'o': None,
+            'h': None,
+            'l': None,
+            'c': None,
+            'c_pred': None,
+            'v': None,
+            'qv': None
+        }
+        # 记录是否对qv进行了对数变换
+        self.qv_log_transformed = False
 
         # 2. 先划分时序训练/验证/测试集的索引（按时间顺序，不打乱）
         total_len = len(self.data)
@@ -109,39 +121,53 @@ class DataProcessor:
         feature_index = [self.data.columns.get_loc(name) for name in feature_columns]
         target_index = self.data.columns.get_loc(target_column)
 
-        # 标准化特征
-        if self.config['normalization'] == 'minmax':
-            self.scaler = MinMaxScaler(feature_range=(0, 1))
-        elif self.config['normalization'] == 'standard':
-            self.scaler = StandardScaler()
+        # 提取训练集数据
+        train_data = self.data.iloc[train_idx].copy()
+        # 1. 处理o, h, l, c特征 - 使用StandardScaler
+        for feature in ['o', 'h', 'l', 'c_pred', 'c']:
+            scalers[feature] = StandardScaler()
+            # 拟合训练数据
+            scalers[feature].fit(train_data[[feature]])
+            logger.info(f"已拟合 {feature} 的StandardScaler，训练集均值: {scalers[feature].mean_[0]:.4f}")
 
-        if self.config['normalization'] != 'none' and self.scaler:
-            # 仅用训练集的特征拟合标准化器
-            self.scaler.fit(self.data.iloc[train_idx, feature_index])
+        # 2. 处理v特征 - 使用RobustScaler
+        scalers['v'] = RobustScaler()
+        scalers['v'].fit(train_data[['v']])
+        logger.info(f"已拟合 v 的RobustScaler，训练集中位数: {scalers['v'].center_[0]:.4f}")
 
+        # 3. 处理qv特征 - 先对数变换再用RobustScaler
+        # 检查是否有qv=0的情况，确保对数变换安全
+        # 对训练集进行对数变换
+        train_qv_log = np.log1p(train_data['qv'])  # log(1 + x)处理，避免0值问题
+        self.qv_log_transformed = True
+
+        # 拟合RobustScaler
+        scalers['qv'] = RobustScaler()
+        scalers['qv'].fit(train_qv_log.values.reshape(-1, 1))
+        logger.info(f"已拟合 qv 的RobustScaler（带对数变换），训练集中位数: {scalers['qv'].center_[0]:.4f}")
+
+        # 1. 转换o, h, l, c特征
+        for feature in ['o', 'h', 'l', 'c_pred', 'c']:
             # 分别转换训练集、验证集、测试集的特征（避免信息泄露）
-            self.data.iloc[train_idx, feature_index] = self.scaler.transform(
-                self.data.iloc[train_idx, feature_index])
-            self.data.iloc[val_idx, feature_index] = self.scaler.transform(
-                self.data.iloc[val_idx, feature_index])
-            self.data.iloc[test_idx, feature_index] = self.scaler.transform(
-                self.data.iloc[test_idx, feature_index])
+            self.data.iloc[train_idx,feature] = scalers[feature].transform(
+                self.data.iloc[train_idx,feature])
+            self.data.iloc[val_idx,feature] = scalers[feature].transform(
+                self.data.iloc[val_idx,feature])
+            self.data.iloc[test_idx,feature] = scalers[feature].transform(
+                self.data.iloc[test_idx,feature])
 
-        # 单独标准化目标变量
-        self.scaler_target = MinMaxScaler(feature_range=(0, 1)) if self.config['normalization'] != 'none' else None
-        if self.scaler_target:
-            # 仅用训练集的目标拟合
-            self.scaler_target.fit(self.data.iloc[train_idx, target_index].values.reshape(-1, 1))
-            # 转换所有集的目标
-            self.data.iloc[train_idx, target_index] = self.scaler_target.transform(
-                self.data.iloc[train_idx, target_index].values.reshape(-1, 1)
-            ).flatten()
-            self.data.iloc[val_idx, target_index] = self.scaler_target.transform(
-                self.data.iloc[val_idx, target_index].values.reshape(-1, 1)
-            ).flatten()
-            self.data.iloc[test_idx, target_index] = self.scaler_target.transform(
-                self.data.iloc[test_idx, target_index].values.reshape(-1, 1)
-            ).flatten()
+        # 2. 转换v特征
+        self.data.iloc[train_idx, 'v'] = scalers['v'].transform(self.data.iloc[train_idx, feature])
+        self.data.iloc[val_idx, 'v'] = scalers['v'].transform(self.data.iloc[val_idx, feature])
+        self.data.iloc[test_idx, 'v'] = scalers['v'].transform(self.data.iloc[test_idx, feature])
+
+        # 3. 转换qv特征
+        # 先进行对数变换
+        qv_log = np.log1p(self.data['qv'])
+        # 再应用标准化
+        self.data.iloc[train_idx, 'qv'] = scalers['qv'].transform(qv_log[train_idx].reshape(-1, 1)).flatten()
+        self.data.iloc[val_idx, 'qv'] = scalers['qv'].transform(qv_log[val_idx].reshape(-1, 1)).flatten()
+        self.data.iloc[test_idx, 'qv'] = scalers['qv'].transform(qv_log[test_idx].reshape(-1, 1)).flatten()
 
         logger.info(f"训练集特征均值:{self.data.iloc[train_idx, feature_index].mean().values}")
         logger.info(f"验证集特征均值:{self.data.iloc[val_idx, feature_index].mean().values}")
