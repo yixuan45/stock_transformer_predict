@@ -2,3 +2,5 @@
 *.log
 *.pt
 *.png
+data/min_eth_data.csv
+*.csv
