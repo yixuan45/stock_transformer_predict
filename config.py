@@ -14,7 +14,7 @@ def get_config():
 
     # 数据相关配置
     data_group = parser.add_argument_group('data_config')
-    data_group.add_argument('--data_path', type=str, default='./data/eth_data.csv', help='the path of data')
+    data_group.add_argument('--data_path', type=str, default='./data/min_eth_data.csv', help='the path of data')
     data_group.add_argument('--sequence_length', type=int, default=100, help='the length of input sequence')
     data_group.add_argument('--prediction_length', type=int, default=1, help='the length of prediction sequence')
     data_group.add_argument('--test_size', type=float, default=0.2, help='the size of test data')
@@ -48,7 +48,7 @@ def get_config():
     train_group.add_argument('--weight_decay', type=float, default=1e-5,
                              help='weight decay')
     train_group.add_argument('--loss_fn', type=str, default='huber',
-                             choices=['mse','huber', 'mae', 'huber'],
+                             choices=['mse','huber', 'mae'],
                              help='loss function') # HuberLoss（鲁棒损失），对异常值的敏感度低
     train_group.add_argument('--optimizer', type=str, default='adam',
                              choices=['adam', 'sgd', 'rmsprop'],

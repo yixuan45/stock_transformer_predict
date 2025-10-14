@@ -82,6 +82,9 @@ class DataProcessor:
         target_column = 'c_pred'  # 目标价格列
         feature_columns = [col for col in self.data.columns if col != target_column]  # 特征列
 
+        # 先对数据进行一阶差分
+        self._time_series_differencer()
+
         # 数据标准化
         self._normalize_data(feature_columns, target_column)
 
@@ -89,24 +92,49 @@ class DataProcessor:
         self._create_sequences(feature_columns, target_column)
         logger.info("数据预处理完成")
 
+    def _time_series_differencer(self):
+        """对有明显时序特征的数据进行差分处理"""
+        logger.info("对有明显时序特征的数据进行差分进行处理")
+        # 存储差分所需的起点值（用于还原）
+        self.first_values = {}
+
+        # 记录需要差分的特征
+        diff_features = ['o', 'h', 'l', 'c', 'c_pred','v','qv']
+
+        # 对当前的first_values进行初始化
+        for feature in diff_features:
+            self.first_values[feature] = self.data[feature].iloc[0]
+
+        # 复制数据以避免修改原始数据
+        diff_df = self.data.copy()
+
+        # 对指定特征进行差分处理
+        diff_df[diff_features] = self.data[diff_features].diff()
+
+        # 移除第一行（因为差分后第一行为NaN）
+        diff_df = diff_df.iloc[1:].copy()
+
+        self.data[diff_features] = diff_df[diff_features]
+
+        self.data.dropna(inplace=True)
+
+        logger.info("对有明显时序特征的数据进行差分处理完成")
+
     def _normalize_data(self, feature_columns, target_column):
         """标准化特征和目标变量"""
-        logger.info(f'初始化自适应特征标准化器，为不同特征设置不同标准化策略')
+        logger.info(f"使用{self.config['normalization']}标准化所有特征和目标变量")
 
-        # 存储每个特征的标准化器
-        scalers = {
-            'o': None,
-            'h': None,
-            'l': None,
-            'c': None,
-            'c_pred': None,
-            'v': None,
-            'qv': None
-        }
-        # 记录是否对qv进行了对数变换
-        self.qv_log_transformed = False
+        if self.config['normalization'] == 'minmax':
+            self.scaler_features = MinMaxScaler(feature_range=(0, 1))
+            self.scaler_target = MinMaxScaler(feature_range=(0, 1))
+        elif self.config['normalization'] == 'standard':
+            self.scaler_features = StandardScaler()
+            self.scaler_target = StandardScaler()
+        elif self.config['normalization'] == 'robust':
+            self.scaler_features = RobustScaler()
+            self.scaler_target = RobustScaler()
 
-        # 2. 先划分时序训练/验证/测试集的索引（按时间顺序，不打乱）
+        # 划分时序训练/验证/测试集的索引（按时间顺序，不打乱）
         total_len = len(self.data)
         test_len = int(total_len * self.config['test_size'])
         val_len = int(total_len * self.config['val_size'])
@@ -117,61 +145,25 @@ class DataProcessor:
         val_idx = range(train_len, train_len + val_len)
         test_idx = range(train_len + val_len, total_len)
 
-        # target_index
-        feature_index = [self.data.columns.get_loc(name) for name in feature_columns]
-        target_index = self.data.columns.get_loc(target_column)
+        # 拟合训练数据的特征
+        self.scaler_features.fit(self.data.iloc[train_idx][feature_columns])
 
-        # 提取训练集数据
-        train_data = self.data.iloc[train_idx].copy()
-        # 1. 处理o, h, l, c特征 - 使用StandardScaler
-        for feature in ['o', 'h', 'l', 'c_pred', 'c']:
-            scalers[feature] = StandardScaler()
-            # 拟合训练数据
-            scalers[feature].fit(train_data[[feature]])
-            logger.info(f"已拟合 {feature} 的StandardScaler，训练集均值: {scalers[feature].mean_[0]:.4f}")
+        # 拟合训练数据的目标
+        self.scaler_target.fit(self.data.iloc[train_idx][[target_column]])
 
-        # 2. 处理v特征 - 使用RobustScaler
-        scalers['v'] = RobustScaler()
-        scalers['v'].fit(train_data[['v']])
-        logger.info(f"已拟合 v 的RobustScaler，训练集中位数: {scalers['v'].center_[0]:.4f}")
+        # 转换特征
+        self.data.loc[:, feature_columns] = self.scaler_features.transform(self.data[feature_columns])
 
-        # 3. 处理qv特征 - 先对数变换再用RobustScaler
-        # 检查是否有qv=0的情况，确保对数变换安全
-        # 对训练集进行对数变换
-        train_qv_log = np.log1p(train_data['qv'])  # log(1 + x)处理，避免0值问题
-        self.qv_log_transformed = True
+        # 转换目标
+        self.data.loc[:, target_column] = self.scaler_target.transform(self.data[[target_column]])
 
-        # 拟合RobustScaler
-        scalers['qv'] = RobustScaler()
-        scalers['qv'].fit(train_qv_log.values.reshape(-1, 1))
-        logger.info(f"已拟合 qv 的RobustScaler（带对数变换），训练集中位数: {scalers['qv'].center_[0]:.4f}")
+        logger.info(f"训练集特征标准化完成")
+        logger.info(f"验证集特征标准化完成")
+        logger.info(f"测试集特征标准化完成")
 
-        # 1. 转换o, h, l, c特征
-        for feature in ['o', 'h', 'l', 'c_pred', 'c']:
-            # 分别转换训练集、验证集、测试集的特征（避免信息泄露）
-            self.data.iloc[train_idx,feature] = scalers[feature].transform(
-                self.data.iloc[train_idx,feature])
-            self.data.iloc[val_idx,feature] = scalers[feature].transform(
-                self.data.iloc[val_idx,feature])
-            self.data.iloc[test_idx,feature] = scalers[feature].transform(
-                self.data.iloc[test_idx,feature])
-
-        # 2. 转换v特征
-        self.data.iloc[train_idx, 'v'] = scalers['v'].transform(self.data.iloc[train_idx, feature])
-        self.data.iloc[val_idx, 'v'] = scalers['v'].transform(self.data.iloc[val_idx, feature])
-        self.data.iloc[test_idx, 'v'] = scalers['v'].transform(self.data.iloc[test_idx, feature])
-
-        # 3. 转换qv特征
-        # 先进行对数变换
-        qv_log = np.log1p(self.data['qv'])
-        # 再应用标准化
-        self.data.iloc[train_idx, 'qv'] = scalers['qv'].transform(qv_log[train_idx].reshape(-1, 1)).flatten()
-        self.data.iloc[val_idx, 'qv'] = scalers['qv'].transform(qv_log[val_idx].reshape(-1, 1)).flatten()
-        self.data.iloc[test_idx, 'qv'] = scalers['qv'].transform(qv_log[test_idx].reshape(-1, 1)).flatten()
-
-        logger.info(f"训练集特征均值:{self.data.iloc[train_idx, feature_index].mean().values}")
-        logger.info(f"验证集特征均值:{self.data.iloc[val_idx, feature_index].mean().values}")
-        logger.info(f"测试集特征均值:{self.data.iloc[test_idx, feature_index].mean().values}")
+        logger.info(f"训练集特征均值:{self.data.iloc[train_idx][feature_columns].mean().values}")
+        logger.info(f"验证集特征均值:{self.data.iloc[val_idx][feature_columns].mean().values}")
+        logger.info(f"测试集特征均值:{self.data.iloc[test_idx][feature_columns].mean().values}")
 
     def _create_sequences(self, feature_columns, target_column):
         """创建输入序列和目标序列"""

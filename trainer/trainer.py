@@ -45,6 +45,7 @@ class Trainer:
         lr = config['lr']
         weight_decay = config['weight_decay']
 
+        logger.info(f"配置优化器{lr},权重衰减为{weight_decay}")
         if optimizer_name == 'adam':
             return optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
         elif optimizer_name == 'sgd':
@@ -58,6 +59,7 @@ class Trainer:
         """根据配置获取学习率调度器"""
         scheduler_name = config['lr_scheduler'].lower()
 
+        logger.info(f"配置学习率调度器{scheduler_name}")
         if scheduler_name == 'cosine':
             return CosineAnnealingLR(self.optimizer, T_max=config['epochs'])
         elif scheduler_name == 'step':
@@ -71,14 +73,13 @@ class Trainer:
         """根据配置获取损失函数"""
         loss_name = config['loss_fn'].lower()
 
+        logger.info(f"配置损失函数{loss_name}")
         if loss_name == 'mse':
             return nn.MSELoss()
         elif loss_name == 'huber':
-            return nn.HuberLoss(delta=1.5)
+            return nn.HuberLoss(delta=1.0)
         elif loss_name == 'mae':
             return nn.L1Loss()
-        elif loss_name == 'huber':
-            return nn.HuberLoss(delta=1.0)
         else:
             raise ValueError(f"不支持的损失函数: {loss_name}")
 
@@ -101,7 +102,7 @@ class Trainer:
                 decoder_input = torch.cat([torch.zeros_like(targets[:, :1, :]), targets[:, :-1, :]], dim=1)
                 outputs = self.model(inputs, decoder_input).squeeze(-1)
             else:
-                outputs = self.model(inputs).squeeze(-1)
+                outputs = self.model(inputs).squeeze(-1) # (batch_size,seq_len,input_dim)
 
             # 计算损失
             loss = self.criterion(outputs, targets)
