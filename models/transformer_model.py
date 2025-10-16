@@ -389,7 +389,7 @@ class TransformerWithDecoderModel(nn.Module):
     """编码器和解码器的Transformer价格预测模型"""
 
     def __init__(self):
-        super(TransformerWithDecoder, self).__init__()
+        super(TransformerWithDecoderModel, self).__init__()
 
         # 输入特征维度映射到模型维度
         self.input_projection = nn.Linear(config['input_dim'], config['d_model'])

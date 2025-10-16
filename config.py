@@ -21,7 +21,7 @@ def get_config():
     data_group.add_argument('--val_size', type=float, default=0.1, help='the size of validation data')
     data_group.add_argument('--batch_size', type=int, default=128, help='the batch size')
     data_group.add_argument('--shuffle', action='store_true', default=True, help='whether to shuffle data')
-    data_group.add_argument('--normalization', type=str, default='minmax', choices=['minmax', 'standard','robust', 'none'],
+    data_group.add_argument('--normalization', type=str, default='standard', choices=['minmax', 'standard','robust', 'none'],
                             help='the normalization method') # robust更加的稳定。
 
     # 模型相关配置
@@ -43,7 +43,7 @@ def get_config():
     train_group = parser.add_argument_group('train_config')
     train_group.add_argument('--epochs', type=int, default=30,
                              help='epochs')
-    train_group.add_argument('--lr', type=float, default=1e-3,
+    train_group.add_argument('--lr', type=float, default=1e-7,
                              help='initial learning rate')
     train_group.add_argument('--weight_decay', type=float, default=1e-5,
                              help='weight decay')

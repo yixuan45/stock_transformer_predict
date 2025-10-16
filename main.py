@@ -1,12 +1,17 @@
 # -*- coding: utf-8 -*-
-import logging
 import os
+import torch
+import logging
+
 from data.data_loader import DataProcessor
 from models.transformer_model import get_transformer_model
 from trainer.trainer import Trainer
 from log.logs.logger import *
 from config import config
 
+
+# 设置随机种子，保证结果可复现
+torch.manual_seed(42)
 
 def main():
     """主函数，协调数据加载、模型初始化和训练过程"""

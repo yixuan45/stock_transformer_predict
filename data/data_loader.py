@@ -83,7 +83,7 @@ class DataProcessor:
         feature_columns = [col for col in self.data.columns if col != target_column]  # 特征列
 
         # 先对数据进行一阶差分
-        self._time_series_differencer()
+        # self._time_series_differencer()
 
         # 数据标准化
         self._normalize_data(feature_columns, target_column)
